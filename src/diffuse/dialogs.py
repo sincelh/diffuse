@@ -124,14 +124,34 @@ class NumericDialog(Gtk.Dialog):
 
 # dialogue used to search for text
 class SearchDialog(Gtk.Dialog):
+    ACTION_PREVIOUS = -1
+    ACTION_NEXT = 1
+
+    RESPONSE_PREVIOUS = 100
+    RESPONSE_NEXT = 101
+
+    __gsignals__ = {
+        'search': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_INT,)),
+    }
+
     def __init__(self, parent, pattern=None, history=None):
         Gtk.Dialog.__init__(
             self,
             title=_('Find...'),
             transient_for=parent,
             destroy_with_parent=True)
+
+        # Keep the search dialogue available while the user interacts with the
+        # file viewers.  The dialogue stays above the main window so search
+        # results remain visible as the user steps through matches.
+        self.set_modal(False)
+        self.set_keep_above(True)
+
         self.add_button(_('_Cancel'), Gtk.ResponseType.REJECT)
-        self.add_button(_('_OK'), Gtk.ResponseType.ACCEPT)
+        self.add_button(_('Find Pre_vious'), self.RESPONSE_PREVIOUS)
+        self.add_button(_('Find _Next'), self.RESPONSE_NEXT)
+        self.set_default_response(self.RESPONSE_NEXT)
+        self.connect('response', self._response_cb)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         vbox.set_border_width(10)
@@ -167,17 +187,36 @@ class SearchDialog(Gtk.Dialog):
         vbox.pack_start(button, False, False, 0)
         button.show()
 
-        button = Gtk.CheckButton.new_with_mnemonic(_('Search Backwards'))
-        self.backwards_button = button
-        vbox.pack_start(button, False, False, 0)
-        button.show()
-
         self.vbox.pack_start(vbox, False, False, 0)
         vbox.show()
 
     # callback used when the Enter key is pressed
     def _entry_cb(self, widget: Gtk.Entry) -> None:
-        self.response(Gtk.ResponseType.ACCEPT)
+        self.response(self.RESPONSE_NEXT)
 
     def get_search_text(self) -> str:
         return self._entry.get_text()
+
+    # Present the dialogue and return focus to the search field.
+    def present_search(self) -> None:
+        self.present()
+        self._entry.grab_focus()
+
+    # Keep the dialogue open for search actions; only closing or cancelling
+    # should destroy it.
+    def _response_cb(self, dialog: Gtk.Dialog, response_id: int) -> None:
+        if response_id not in (self.RESPONSE_PREVIOUS, self.RESPONSE_NEXT):
+            self.destroy()
+            return
+
+        # Prevent GtkDialog's default response handler from destroying the
+        # dialogue for the non-closing search actions.
+        self.stop_emission_by_name('response')
+
+        if response_id == self.RESPONSE_PREVIOUS:
+            action = self.ACTION_PREVIOUS
+        else:
+            action = self.ACTION_NEXT
+
+        self.emit('search', action)
+        self.present_search()

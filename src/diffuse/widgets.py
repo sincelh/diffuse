@@ -230,6 +230,9 @@ class FileDiffViewerBase(Gtk.Grid):
         self.cursor_column = -1
         # the currently selected word used for highlighting all matching words
         self._word_highlight: Optional[str] = None
+        # the current search pattern used for highlighting all matches
+        self._search_pattern: Optional[str] = None
+        self._search_match_case = False
 
         # keybindings
         self._line_mode_actions: Dict[str, Callable] = {
@@ -1767,6 +1770,61 @@ class FileDiffViewerBase(Gtk.Grid):
         for darea in self.dareas:
             darea.queue_draw()
 
+    # set the pattern used to highlight search matches and redraw the viewer
+    def setSearchHighlight(self, pattern: Optional[str], match_case: bool) -> None:
+        self._search_pattern = pattern
+        self._search_match_case = match_case
+        for darea in self.dareas:
+            darea.queue_draw()
+
+    # returns the ranges matching the current search pattern on a line
+    def _getSearchHighlightRanges(self, f: int, i: int) -> List[Tuple[int, int]]:
+        pattern = self._search_pattern
+        if pattern is None:
+            return []
+
+        text = self.getLineText(f, i)
+        if text is None:
+            return []
+        text = utils.strip_eol(text)
+
+        if not self._search_match_case:
+            pattern = pattern.upper()
+            text = text.upper()
+
+        result: List[Tuple[int, int]] = []
+        start = 0
+        while True:
+            start = text.find(pattern, start)
+            if start < 0:
+                break
+            end = start + len(pattern)
+            result.append((start, end))
+            start = end
+        return result
+
+    # returns True if the search range is the currently selected match
+    def _isCurrentSearchHighlight(
+        self,
+        f: int,
+        i: int,
+        start_char: int,
+        end_char: int
+    ) -> bool:
+        if f != self.current_pane or self.mode != EditMode.CHAR:
+            return False
+
+        start_line, start_j = self.selection_line, self.selection_char
+        end_line, end_j = self.current_line, self.current_char
+        if end_line < start_line or (end_line == start_line and end_j < start_j):
+            start_line, start_j, end_line, end_j = end_line, end_j, start_line, start_j
+        return (
+            start_line == i and
+            end_line == i and
+            start_j == start_char and
+            end_j == end_char
+        )
+
     # returns the whole-word ranges matching the selected word on a line
     def _getWordHighlightRanges(self, f: int, i: int) -> List[Tuple[int, int]]:
         word = self._word_highlight
@@ -2310,6 +2368,19 @@ class FileDiffViewerBase(Gtk.Grid):
                     w = self.getTextWidth(''.join(self.expand(text[start_char:end_char])))
                     colour = theResources.getColour('word_highlight')
                     alpha = theResources.getFloat('word_highlight_opacity')
+                    cr.set_source_rgba(colour.red, colour.green, colour.blue, alpha)
+                    cr.rectangle(x_start + _pixels(x_temp), y_start, _pixels(w), h)
+                    cr.fill()
+
+                for start_char, end_char in self._getSearchHighlightRanges(f, i):
+                    x_temp = self.getTextWidth(''.join(self.expand(text[:start_char])))
+                    w = self.getTextWidth(''.join(self.expand(text[start_char:end_char])))
+                    if self._isCurrentSearchHighlight(f, i, start_char, end_char):
+                        colour = theResources.getColour('search_highlight_current')
+                        alpha = theResources.getFloat('search_highlight_current_opacity')
+                    else:
+                        colour = theResources.getColour('search_highlight')
+                        alpha = theResources.getFloat('search_highlight_opacity')
                     cr.set_source_rgba(colour.red, colour.green, colour.blue, alpha)
                     cr.rectangle(x_start + _pixels(x_temp), y_start, _pixels(w), h)
                     cr.fill()

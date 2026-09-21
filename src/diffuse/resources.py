@@ -187,9 +187,11 @@ class Resources:
             'margin': _Colour(0.8, 0.8, 0.8),
             'edited': _Colour(0.5, 1.0, 0.5),
             'preedit': _Colour(0.0, 0.0, 0.0),
+            'search_highlight': _Colour(1.0, 0.85, 0.25),
+            'search_highlight_current': _Colour(1.0, 0.35, 0.1),
             'text': _Colour(0.0, 0.0, 0.0),
             'text_background': _Colour(1.0, 1.0, 1.0),
-            'word_highlight': _Colour(1.0, 0.92, 0.45)
+            'word_highlight': _Colour(0.3, 0.5, 1.0)
         }
 
         # default floats
@@ -200,6 +202,8 @@ class Resources:
             'edited_opacity': 0.4,
             'line_difference_opacity': 0.3,
             'line_selection_opacity': 0.4,
+            'search_highlight_opacity': 0.35,
+            'search_highlight_current_opacity': 0.75,
             'word_highlight_opacity': 0.35
         }
 

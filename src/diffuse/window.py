@@ -685,8 +685,7 @@ class DiffuseWindow(Gtk.ApplicationWindow):
         # state information that should persist across sessions
         self.bool_state = {
             'window_maximized': False,
-            'search_matchcase': False,
-            'search_backwards': False
+            'search_matchcase': False
         }
         self.int_state = {
             'window_width': 1024,
@@ -700,6 +699,8 @@ class DiffuseWindow(Gtk.ApplicationWindow):
         # search history is application wide
         self.search_pattern: Optional[str] = None
         self.search_history: List[str] = []
+        self.search_dialog: Optional[SearchDialog] = None
+        self.search_viewer: Optional[FileDiffViewer] = None
 
         self.connect('delete-event', self.delete_cb)
 
@@ -1540,39 +1541,62 @@ class DiffuseWindow(Gtk.ApplicationWindow):
         if self.confirmQuit():
             self.get_application().quit()
 
-    # request search parameters if force=True and then perform a search in the
-    # current viewer pane
-    def find(self, force: bool, reverse: bool) -> None:
+    def _create_search_dialog(self) -> None:
         viewer = self.getCurrentViewer()
-        if force or self.search_pattern is None:
-            # construct search dialog
-            history = self.search_history
-            pattern = viewer.getSelectedText()
-            for c in '\r\n':
-                i = pattern.find(c)
-                if i >= 0:
-                    pattern = pattern[:i]
-            dialog = SearchDialog(self.get_toplevel(), pattern, history)
-            dialog.match_case_button.set_active(self.bool_state['search_matchcase'])
-            dialog.backwards_button.set_active(self.bool_state['search_backwards'])
-            keep = (dialog.run() == Gtk.ResponseType.ACCEPT)
-            # persist the search options
-            pattern = dialog.get_search_text()
-            match_case = dialog.match_case_button.get_active()
-            backwards = dialog.backwards_button.get_active()
-            dialog.destroy()
-            if not keep or pattern == '':
-                return
-            # perform the search
-            self.search_pattern = pattern
-            if pattern in history:
-                del history[history.index(pattern)]
-            history.insert(0, pattern)
-            self.bool_state['search_matchcase'] = match_case
-            self.bool_state['search_backwards'] = backwards
+        pattern = viewer.getSelectedText()
+        for c in '\r\n':
+            i = pattern.find(c)
+            if i >= 0:
+                pattern = pattern[:i]
 
-        # determine where to start searching from
-        reverse ^= self.bool_state['search_backwards']
+        dialog = SearchDialog(self.get_toplevel(), pattern, self.search_history)
+        dialog.match_case_button.set_active(self.bool_state['search_matchcase'])
+        dialog.connect('search', self.search_dialog_search_cb)
+        dialog.connect('destroy', self.search_dialog_destroyed_cb)
+        self.search_dialog = dialog
+        dialog.show_all()
+        dialog.present_search()
+
+    def _update_search_state(self, dialog: SearchDialog) -> bool:
+        pattern = dialog.get_search_text()
+        if pattern == '':
+            self.search_pattern = None
+            self._clear_search_highlights()
+            return False
+
+        history = self.search_history
+        self.search_pattern = pattern
+        if pattern in history:
+            del history[history.index(pattern)]
+        history.insert(0, pattern)
+        self.bool_state['search_matchcase'] = dialog.match_case_button.get_active()
+        return True
+
+    def _search_with_dialog(self, dialog: SearchDialog, action: int) -> None:
+        if not self._update_search_state(dialog):
+            return
+
+        self._perform_search(action == SearchDialog.ACTION_PREVIOUS)
+
+    def _clear_search_highlights(self) -> None:
+        if self.search_viewer is not None:
+            self.search_viewer.setSearchHighlight(None, False)
+            self.search_viewer = None
+
+    def _set_search_viewer(self, viewer: FileDiffViewer) -> None:
+        if self.search_viewer is not viewer:
+            if self.search_viewer is not None:
+                self.search_viewer.setSearchHighlight(None, False)
+            viewer.connect('destroy', self.search_viewer_destroyed_cb)
+            self.search_viewer = viewer
+        viewer.setSearchHighlight(self.search_pattern, self.bool_state['search_matchcase'])
+
+    def _perform_search(self, reverse: bool) -> None:
+        if self.search_pattern is None:
+            return
+
+        viewer = self.getCurrentViewer()
+        self._set_search_viewer(viewer)
         from_start, more = False, True
         while more:
             if viewer.find(
@@ -1592,6 +1616,40 @@ class DiffuseWindow(Gtk.ApplicationWindow):
             more = (dialog.run() == Gtk.ResponseType.OK)
             dialog.destroy()
             from_start = True
+
+    # request search parameters if force=True and then perform a search in the
+    # current viewer pane
+    def find(self, force: bool, reverse: bool) -> None:
+        # Present the existing dialogue instead of creating a duplicate.  Menu
+        # triggered next and previous searches use the current dialogue text.
+        if self.search_dialog is not None:
+            if force:
+                self.search_dialog.present_search()
+            elif self.search_dialog.get_visible():
+                action = SearchDialog.ACTION_PREVIOUS if reverse else SearchDialog.ACTION_NEXT
+                self._search_with_dialog(self.search_dialog, action)
+            else:
+                self.search_dialog.present_search()
+            return
+
+        if force or self.search_pattern is None:
+            self._create_search_dialog()
+            return
+
+        # determine where to start searching from
+        self._perform_search(reverse)
+
+    def search_dialog_search_cb(self, dialog: SearchDialog, action: int) -> None:
+        self._search_with_dialog(dialog, action)
+
+    def search_dialog_destroyed_cb(self, widget: Gtk.Widget) -> None:
+        if self.search_dialog is widget:
+            self.search_dialog = None
+            self._clear_search_highlights()
+
+    def search_viewer_destroyed_cb(self, widget: Gtk.Widget) -> None:
+        if self.search_viewer is widget:
+            self.search_viewer = None
 
     # callback for the find menu item
     def find_cb(self, widget, data):

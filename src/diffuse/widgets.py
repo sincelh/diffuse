@@ -228,6 +228,8 @@ class FileDiffViewerBase(Gtk.Grid):
         self.align_pane = 0
         self.align_line = 0
         self.cursor_column = -1
+        # the currently selected word used for highlighting all matching words
+        self._word_highlight: Optional[str] = None
 
         # keybindings
         self._line_mode_actions: Dict[str, Callable] = {
@@ -523,6 +525,7 @@ class FileDiffViewerBase(Gtk.Grid):
                 self.align_pane = 0
                 self.align_line = 0
             self.mode = EditMode.LINE
+            self._updateWordHighlights()
             self.emit('cursor-changed')
             self.emit('mode-changed')
 
@@ -831,6 +834,8 @@ class FileDiffViewerBase(Gtk.Grid):
         if i < len(pane.diff_cache):
             pane.diff_cache[i] = None
         self.dareas[f].queue_draw()
+        if self._word_highlight is not None:
+            self._queueWordHighlightRedraw()
         if self.getMapFlags(f, i) != flags:
             self.diffmap_cache = None
             self.diffmap.queue_draw()
@@ -1065,6 +1070,8 @@ class FileDiffViewerBase(Gtk.Grid):
         del pane.syntax_cache[:]
         pane.max_line_number = new_max_num
         self.dareas[f].queue_draw()
+        if self._word_highlight is not None:
+            self._queueWordHighlightRedraw()
         self.updateSize(True, f)
         self.diffmap_cache = None
         self.diffmap.queue_draw()
@@ -1586,6 +1593,7 @@ class FileDiffViewerBase(Gtk.Grid):
         self.selection_line = selection if selection is not None else i
 
         self.emit('cursor-changed')
+        self._updateWordHighlights()
 
         # invalidate old selection area
         self._queue_draw_lines(old_f, line0, line1)
@@ -1698,6 +1706,7 @@ class FileDiffViewerBase(Gtk.Grid):
 
         self._cursor_position_changed(True)
         self.emit('cursor-changed')
+        self._updateWordHighlights()
 
         # invalidate old selection area
         self._queue_draw_lines(f, line0, line1)
@@ -1706,6 +1715,85 @@ class FileDiffViewerBase(Gtk.Grid):
 
         # ensure the new cursor position is visible
         self._ensure_cursor_is_visible()
+
+    # returns the selected text if it is a complete word, otherwise returns None
+    # a complete word is a single-line selection whose boundaries match the
+    # character classes used when selecting words with a double click
+    def _getSelectedWord(self) -> Optional[str]:
+        if self.mode != EditMode.CHAR:
+            return None
+
+        f = self.current_pane
+        start_i, start_j = self.selection_line, self.selection_char
+        end_i, end_j = self.current_line, self.current_char
+        if end_i < start_i or (end_i == start_i and end_j < start_j):
+            start_i, start_j, end_i, end_j = end_i, end_j, start_i, start_j
+        if start_i != end_i or start_j >= end_j:
+            return None
+
+        text = self.getLineText(f, start_i)
+        if text is None:
+            return None
+        text = utils.strip_eol(text)
+        if end_j > len(text):
+            return None
+
+        word = text[start_j:end_j]
+        if not word:
+            return None
+        first_class = _get_character_class(word[0])
+        last_class = _get_character_class(word[-1])
+        if (
+            first_class == CharacterClass.WHITESPACE or
+            last_class == CharacterClass.WHITESPACE or
+            any(_get_character_class(c) != first_class for c in word)
+        ):
+            return None
+        if start_j > 0 and _get_character_class(text[start_j - 1]) == first_class:
+            return None
+        if end_j < len(text) and _get_character_class(text[end_j]) == last_class:
+            return None
+        return word
+
+    # updates the word to highlight when the selection changes
+    def _updateWordHighlights(self) -> None:
+        word = self._getSelectedWord()
+        if word != self._word_highlight:
+            self._word_highlight = word
+            self._queueWordHighlightRedraw()
+
+    # redraws all panes so matching words outside the current selection are refreshed
+    def _queueWordHighlightRedraw(self) -> None:
+        for darea in self.dareas:
+            darea.queue_draw()
+
+    # returns the whole-word ranges matching the selected word on a line
+    def _getWordHighlightRanges(self, f: int, i: int) -> List[Tuple[int, int]]:
+        word = self._word_highlight
+        if word is None:
+            return []
+
+        text = self.getLineText(f, i)
+        if text is None:
+            return []
+        text = utils.strip_eol(text)
+
+        result: List[Tuple[int, int]] = []
+        first_class = _get_character_class(word[0])
+        last_class = _get_character_class(word[-1])
+        start = 0
+        while True:
+            start = text.find(word, start)
+            if start < 0:
+                break
+            end = start + len(word)
+            if (
+                (start == 0 or _get_character_class(text[start - 1]) != first_class) and
+                (end == len(text) or _get_character_class(text[end]) != last_class)
+            ):
+                result.append((start, end))
+            start = end
+        return result
 
     # returns the currently selected text
     def getSelectedText(self):
@@ -1744,6 +1832,7 @@ class FileDiffViewerBase(Gtk.Grid):
                 self.selection_char = 0
                 self.current_char = 0
             self.dareas[f].queue_draw()
+            self._updateWordHighlights()
 
     # returns the index of the last character in text that should be left of
     # 'x' _pixels from the edge of the darea widget
@@ -2215,6 +2304,15 @@ class FileDiffViewerBase(Gtk.Grid):
                                 cr.set_source_rgba(colour.red, colour.green, colour.blue, alpha)
                                 cr.rectangle(x_start + _pixels(x_temp), y_start, _pixels(w), h)
                                 cr.fill()
+
+                for start_char, end_char in self._getWordHighlightRanges(f, i):
+                    x_temp = self.getTextWidth(''.join(self.expand(text[:start_char])))
+                    w = self.getTextWidth(''.join(self.expand(text[start_char:end_char])))
+                    colour = theResources.getColour('word_highlight')
+                    alpha = theResources.getFloat('word_highlight_opacity')
+                    cr.set_source_rgba(colour.red, colour.green, colour.blue, alpha)
+                    cr.rectangle(x_start + _pixels(x_temp), y_start, _pixels(w), h)
+                    cr.fill()
 
                 if self.prefs.getBool('display_show_right_margin'):
                     # draw margin

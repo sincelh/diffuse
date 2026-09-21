@@ -26,7 +26,7 @@ import traceback
 
 from enum import IntFlag
 from gettext import gettext as _
-from typing import Final, List, Optional, TextIO
+from typing import List, Optional, TextIO
 
 from diffuse import constants
 from diffuse.preferences import Preferences
@@ -346,13 +346,13 @@ class LineEnding(IntFlag):
 
 # avoid some dictionary lookups when string.whitespace is used in loops
 # this is sorted based upon frequency to speed up code for stripping whitespace
-whitespace: Final[str] = ' \t\n\r\x0b\x0c'
+whitespace: str = ' \t\n\r\x0b\x0c'
 
 # use the program's location as a starting place to search for supporting files
 # such as icon and help documentation
-app_path: Final[str] = sys.executable if hasattr(sys, 'frozen') else os.path.realpath(sys.argv[0])
-bin_dir: Final[str] = os.path.dirname(app_path)
+app_path: str = sys.executable if hasattr(sys, 'frozen') else os.path.realpath(sys.argv[0])
+bin_dir: str = os.path.dirname(app_path)
 
 # translation location: '../share/locale/<LANG>/LC_MESSAGES/diffuse.mo'
 # where '<LANG>' is the language key
-lang: Final[Optional[str]] = _get_default_lang()
+lang: Optional[str] = _get_default_lang()

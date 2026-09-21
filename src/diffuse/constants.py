@@ -18,13 +18,12 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 from gettext import gettext as _
-from typing import Final
 
-APP_NAME: Final[str] = 'Diffuse'
-APP_ID: Final[str] = 'io.github.mightycreak.Diffuse'
-COPYRIGHT: Final[str] = '''{copyright} © 2006-2019 Derrick Moser
+APP_NAME: str = 'Diffuse'
+APP_ID: str = 'io.github.mightycreak.Diffuse'
+COPYRIGHT: str = '''{copyright} © 2006-2019 Derrick Moser
 {copyright} © 2015-2023 Romain Failliot'''.format(copyright=_("Copyright"))
-WEBSITE: Final[str] = 'https://mightycreak.github.io/diffuse/'
+WEBSITE: str = 'https://mightycreak.github.io/diffuse/'
 
 # Constants are set in main()
 VERSION: str = '0.0.0'

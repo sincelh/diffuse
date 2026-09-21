@@ -31,7 +31,7 @@ import re
 import shlex
 
 from gettext import gettext as _
-from typing import Dict, Final, List, Optional, Pattern, Set, Tuple
+from typing import Dict, List, Optional, Pattern, Set, Tuple
 
 from diffuse import utils
 
@@ -188,7 +188,8 @@ class Resources:
             'edited': _Colour(0.5, 1.0, 0.5),
             'preedit': _Colour(0.0, 0.0, 0.0),
             'text': _Colour(0.0, 0.0, 0.0),
-            'text_background': _Colour(1.0, 1.0, 1.0)
+            'text_background': _Colour(1.0, 1.0, 1.0),
+            'word_highlight': _Colour(1.0, 0.92, 0.45)
         }
 
         # default floats
@@ -198,7 +199,8 @@ class Resources:
             'character_selection_opacity': 0.4,
             'edited_opacity': 0.4,
             'line_difference_opacity': 0.3,
-            'line_selection_opacity': 0.4
+            'line_selection_opacity': 0.4,
+            'word_highlight_opacity': 0.35
         }
 
         # default options
@@ -607,4 +609,4 @@ class _SyntaxParser:
         return state_name, blocks
 
 
-theResources: Final = Resources()
+theResources: Resources = Resources()

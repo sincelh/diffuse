@@ -24,7 +24,7 @@ import shlex
 import sys
 
 from gettext import gettext as _
-from typing import Any, Dict, Final, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from diffuse import constants
 from diffuse import utils
@@ -119,7 +119,7 @@ class Preferences:
         ]
 
         # conditions used to determine if a preference should be greyed out
-        self.disable_when: Final[Dict[str, Tuple[str, bool]]] = {
+        self.disable_when: Dict[str, Tuple[str, bool]] = {
             'display_right_margin': ('display_show_right_margin', False),
             'display_ignore_whitespace_changes': ('display_ignore_whitespace', True),
             'display_ignore_blanklines': ('display_ignore_whitespace', True),
